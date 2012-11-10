@@ -1,42 +1,57 @@
-#include <iostream>
-#include <vector>
-#include <iomanip>
+/* 
+ * @author 陳賢安(9903089A)
+ * @encode UTF-8
+ *
+ * 功能：
+ * #從檔案讀取opcode table
+ * #search
+ * #insert
+ * #delete
+ */
 
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <map>
+#include <string>
+#include <sstream>
+
+using std::istringstream;
+using std::ifstream;
 using std::string;
-using std::vector;
+using std::map;
 using std::cout;
 using std::endl;
-using std::ios;
-using std::setfill;
-using std::setw;
 using std::hex;
 using std::showbase;
 using std::uppercase;
 
+enum syntaxType{
+	AssemblerDirectives,
+	Instruction
+};
+
 class HashTable{
 	public:
-		enum syntaxType{
-			AssemblerDirectives,
-			Instruction
-		};
-
 		struct record{
-			syntaxType type;
+			enum syntaxType type;
 			string mnemonic;
 			unsigned char opcode;
 			unsigned int format;
 		};
 
 		HashTable();
-		~HashTable();
+
+		void search(string key);
 		void insert(syntaxType type,
 				    string mnemonic,
 					unsigned char opcode,
 					unsigned int format);
+		void Delete(string key);
 		void traversal();
+		void readOptabFromFile(const char * fileName);
 	private:
-		int size_;
-		vector<struct record> table_;
+		map<string, struct record> table_;
 };
 
 HashTable::HashTable()
@@ -100,18 +115,34 @@ HashTable::HashTable()
 	this->insert(Instruction, "TIX", 0x2C, 3);
 	this->insert(Instruction, "TIXR", 0xB8, 2);
 	this->insert(Instruction, "WD", 0xDC, 3);
-	this->insert(AssemblerDirectives, "START", NULL, NULL);
-	this->insert(AssemblerDirectives, "END", NULL, NULL);
-	this->insert(AssemblerDirectives, "BYTE", NULL, NULL);
-	this->insert(AssemblerDirectives, "WORD", NULL, NULL);
-	this->insert(AssemblerDirectives, "RESB", NULL, NULL);
-	this->insert(AssemblerDirectives, "RESW", NULL, NULL);
+	/*this->insert(AssemblerDirectives, "START", 0x01, NULL);
+	this->insert(AssemblerDirectives, "END", 0x02, NULL);
+	this->insert(AssemblerDirectives, "BYTE", 0x03, NULL);
+	this->insert(AssemblerDirectives, "WORD", 0x04, NULL);
+	this->insert(AssemblerDirectives, "RESB", 0x05, NULL);
+	this->insert(AssemblerDirectives, "RESW", 0x06, NULL);*/
 }
 
-HashTable::~HashTable()
+void HashTable::search(string key)
 {
+	record temp;
+	map<string, struct record>::iterator it = table_.find(key);
+	
+	if(it != table_.end())
+	{
+		temp = it->second;
+		if(temp.type == Instruction)
+		{
+			cout << key << ", opcode=";
+			cout.width(2);
+			cout.fill('0');
+			cout << uppercase << hex << (temp.opcode + 0)
+				 << ", format=" << temp.format << endl;
+		}
+		else cout << key << ", Assembler Directive" << endl;
+	}
+	else cout << key << ", not found" <<endl;
 }
-
 
 void HashTable::insert(syntaxType type, string mnemonic, unsigned char opcode, unsigned int format)
 {
@@ -120,30 +151,76 @@ void HashTable::insert(syntaxType type, string mnemonic, unsigned char opcode, u
 	temp.mnemonic = mnemonic;
 	temp.opcode = opcode;
 	temp.format = format;
-	table_.push_back(temp);
+	table_.insert(map<string, struct record>::value_type(mnemonic, temp));
 }
 
 void HashTable::traversal()
 {
-	vector<struct record>::iterator index = table_.begin();
+	map<string, struct record>::const_iterator index = table_.begin();
+	record temp;
 	for(index; index != table_.end(); ++index)
 	{
-		cout << index->mnemonic << " -> ";
-		//cout.setf(ios::hex, ios::basefield);
-		//cout.setf(ios::showbase);
-		//cout << showbase << setfill('0') << setw(2) << hex << (index->opcode + 0) << " -> ";
+		temp = index->second;
+		cout << temp.mnemonic << " -> ";
 		cout << "0x";
 		cout.width(2);
 		cout.fill('0');
-		cout << uppercase << hex << (index->opcode + 0) << " -> ";
-		cout.unsetf(ios::hex | ios::showbase);
-		cout << index->format << endl;
+		cout << uppercase << hex << (temp.opcode + 0) << " -> ";
+		cout << temp.format << endl;
 	}
+}
+
+void HashTable::Delete(string key)
+{
+	if(table_.erase(key)) cout << key << " removed" <<endl;
+	else cout << "error : " << key << " not found" << endl;
+}
+
+void HashTable::readOptabFromFile(const char * fileName)
+{
+	ifstream inputFile(fileName);
+	string buffer;
+	string mnemonic;
+	unsigned char opcode;
+	unsigned int c;
+	unsigned int format;
+
+	while( std::getline(inputFile, buffer) )
+	{
+		istringstream iss(buffer);
+		iss >> mnemonic;
+		iss >> hex >> c;
+		iss >> std::dec >> format;
+		opcode = c;
+		this->insert(Instruction, mnemonic, opcode, format);
+	}
+
+	inputFile.close();
 }
 
 int main()
 {
 	HashTable table;
-	table.traversal();
+	//table.readOptabFromFile("optab.txt");
+	table.insert(AssemblerDirectives, "START", 0x01, NULL);
+	table.insert(AssemblerDirectives, "END", 0x02, NULL);
+	table.insert(AssemblerDirectives, "BYTE", 0x03, NULL);
+	table.insert(AssemblerDirectives, "WORD", 0x04, NULL);
+	table.insert(AssemblerDirectives, "RESB", 0x05, NULL);
+	table.insert(AssemblerDirectives, "RESW", 0x06, NULL);
+
+	table.search("LDA");
+	table.search("STA");
+	table.search("JSUB");
+	table.search("COMP");
+	table.search("LDX");
+	table.search("START");
+	table.search("END");
+	table.search("RESW");
+	table.search("RESR");
+	
+	table.Delete("LDA");
+	table.search("LDA");
+
 	return 0;
 }
