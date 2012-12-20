@@ -24,6 +24,7 @@ using std::istringstream;
 using std::stringstream;
 using std::ifstream;
 using std::ofstream;
+using std::ostream;
 using std::string;
 using std::map;
 using std::cout;
@@ -37,6 +38,39 @@ enum syntaxType{
 	AssemblerDirectives = 1,
 	Instruction,
 	NOT
+};
+
+class SymbolTable{
+public:
+	struct symbolRecord{
+		string name;
+		unsigned int address;
+		string type;
+		unsigned int length;
+	};
+
+	class keyToValue{
+    public:
+        keyToValue(const string& first):first_(first){}
+        bool operator() (const map<string, struct symbolRecord>::value_type& value)
+        {
+            return value.first == first_ ? true : false;
+        }
+    private:
+        const string& first_;
+    };
+
+	SymbolTable();
+
+	friend ostream& operator<<(ostream& output, const SymbolTable& symtab);
+
+	void insert(string name, unsigned int address, string type, unsigned int length);
+	const symbolRecord& search(string first);
+
+	map<string, struct symbolRecord> table_;
+
+private:
+	symbolRecord nullRecord;
 };
 
 class HashTable{
@@ -68,11 +102,49 @@ public:
     void Delete(string key);
     void readOptabFromFile(const char * fileName);
     const record& search(string first);
-    string parseInstruction(string, unsigned int&);
+    string parseInstruction(string, unsigned int&, SymbolTable&);
 private:
     map<string, struct record> table_;
     record nullRecord;
 };
+
+SymbolTable::SymbolTable()
+{
+	nullRecord.name = "";
+	nullRecord.address = 0;
+	nullRecord.type = NOT;
+	nullRecord.length = 0;
+}
+
+ostream& operator<<(ostream& output, const SymbolTable& symtab)
+{
+	map<string, struct SymbolTable::symbolRecord>::const_iterator index = symtab.table_.begin();
+	for(index; index!=symtab.table_.end(); ++index)
+	{
+		SymbolTable::symbolRecord record = index->second;
+		output << record.name << " ";
+		output << uppercase << hex << record.address << " ";
+		output << record.type << " ";
+		output << record.length << endl;
+	}
+	return output;
+}
+
+void SymbolTable::insert(string name, unsigned int address, string type, unsigned int length)
+{
+	symbolRecord temp;
+	temp.name = name;
+	temp.address = address;
+	temp.type = type;
+	temp.length = length;
+	table_.insert(map<string, struct symbolRecord>::value_type(name, temp));
+}
+
+const SymbolTable::symbolRecord& SymbolTable::search(string first)
+{
+	map<string, struct symbolRecord>::const_iterator it = std::find_if(table_.begin(), table_.end(), keyToValue(first));
+	return it != table_.end() ? it->second : nullRecord;
+}
 
 HashTable::HashTable()
 {
@@ -192,7 +264,7 @@ const HashTable::record& HashTable::search(string first)
 	return it != table_.end() ? it->second : nullRecord;
 }
 
-string HashTable::parseInstruction(string buffer, unsigned int& location)
+string HashTable::parseInstruction(string buffer, unsigned int& location, SymbolTable& symTable)
 {
 	record temp;
 	stringstream ss, tmpISS;
@@ -200,11 +272,21 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 	string::size_type pos;
 	unsigned int num;
 	string result, tmpSearch;
+	string label;
+	bool isSymbol = false;
+
+	if(buffer[0]=='.') return " *";
     
 	tmpISS.str(buffer);
 	for(tmpISS >> tmpSearch; !tmpISS.eof(); tmpISS >> tmpSearch)
 	{
 		temp = this->search(tmpSearch);
+		if(temp.type == NOT && tmpSearch != ".")
+		{
+				label = tmpSearch;
+				//symTable.insert(label, 0, "-", 0);
+				isSymbol = true;
+		}
 		if(temp.type != NOT) break;
 	}
     
@@ -221,6 +303,7 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 		ss.clear();
 		ss << hex << setw(2) << std::setfill('0') << (temp.opcode + 0);
 		result.append(ss.str());
+		if(isSymbol == true) symTable.insert(label, location, "instruction", temp.format);
 		location += locationPlus;
 		return result;
 	}
@@ -250,6 +333,7 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 			ss.clear();
 			ss << temp.mnemonic;
 			result.append(ss.str());
+			if(isSymbol == true) symTable.insert(label, location, "BYTE", locationPlus);
 			location += locationPlus;
 			return result;
 		}
@@ -262,6 +346,7 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 			ss.clear();
 			ss << temp.mnemonic;
 			result.append(ss.str());
+			if(isSymbol == true) symTable.insert(label, location, "WORD", locationPlus);
 			location += locationPlus;
 			return result;
 		}
@@ -281,6 +366,7 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 			ss.clear();
 			ss << temp.mnemonic;
 			result.append(ss.str());
+			if(isSymbol == true) symTable.insert(label, location, "RESB", locationPlus);
 			location += locationPlus;
 			return result;
 		}
@@ -300,6 +386,7 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 			ss.clear();
 			ss << temp.mnemonic;
 			result.append(ss.str());
+			if(isSymbol == true) symTable.insert(label, location, "RESW", locationPlus);
 			location += locationPlus;
 			return result;
 		}
@@ -320,22 +407,21 @@ string HashTable::parseInstruction(string buffer, unsigned int& location)
 int main()
 {
 	HashTable table;
-    
+	SymbolTable symTable;
+
 	ifstream sourceFile("example2-1.asm");
 	ofstream outputFile("hw2-3.tmp");
 	int line_count = 1;
 	string buffer;
+	string label;
 	string::size_type pos;
 	stringstream ss;
 	unsigned int location;
     
 	std::getline(sourceFile, buffer);
-	pos = buffer.find("START");
-	buffer.erase(0, pos+5);
-	pos = 0;
-	while(buffer[pos] == ' ') pos++;
-	buffer.erase(0, pos);
 	ss.str(buffer);
+	ss >> label >> buffer;
+	symTable.insert(label, 0, "START", 0);
 	ss >> std::hex >> location;
 	outputFile << setw(2) << line_count << ": ";
 	line_count++;
@@ -345,9 +431,11 @@ int main()
 	while( std::getline(sourceFile, buffer) )
 	{
 		outputFile << setw(2) << line_count << ": ";
-		outputFile << table.parseInstruction(buffer, location) << endl;
+		outputFile << table.parseInstruction(buffer, location, symTable) << endl;
 		line_count++;
 	}
+	outputFile << "SYMTAB:" << endl;
+	outputFile << symTable;
     
 	sourceFile.close();
 	outputFile.close();
