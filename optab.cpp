@@ -103,6 +103,7 @@ public:
     void readOptabFromFile(const char * fileName);
     const record& search(string first);
     string parseInstruction(string, unsigned int&, SymbolTable&);
+	string HashTable::genMachineCode(string buffer, SymbolTable& symTable);
 private:
     map<string, struct record> table_;
     record nullRecord;
@@ -112,7 +113,7 @@ SymbolTable::SymbolTable()
 {
 	nullRecord.name = "";
 	nullRecord.address = 0;
-	nullRecord.type = NOT;
+	nullRecord.type = "NOT";
 	nullRecord.length = 0;
 }
 
@@ -404,6 +405,81 @@ string HashTable::parseInstruction(string buffer, unsigned int& location, Symbol
 	}
 }
 
+string HashTable::genMachineCode(string buffer, SymbolTable& symTable)
+{
+	record temp;
+	stringstream ss, tmpISS;
+	unsigned int locationPlus;
+	string::size_type pos;
+	unsigned int num;
+	string result, tmpSearch;
+	string label;
+	bool isSymbol = false;
+
+	if(buffer[0]=='.') return "";
+    
+	tmpISS.str(buffer);
+	for(tmpISS >> tmpSearch; !tmpISS.eof(); tmpISS >> tmpSearch)
+	{
+		temp = this->search(tmpSearch);
+		if(temp.type == NOT && tmpSearch != ".")
+		{
+				label = tmpSearch;
+				isSymbol = true;
+		}
+		if(temp.type != NOT) break;
+	}
+    
+	if(temp.type == Instruction)
+	{
+		tmpISS >> tmpSearch;
+		size_t pos = tmpSearch.find(',');
+		if(pos != string::npos) tmpSearch = tmpSearch.substr(0, pos);
+		SymbolTable::symbolRecord r = symTable.search(tmpSearch);
+		ss << hex << setw(2) << std::setfill('0') << (temp.opcode + 0);
+		result.append(ss.str());
+		ss.str("");
+		ss.clear();
+		if(r.address==0) result.append("0000");
+		else
+		{
+			ss << hex << r.address;
+			result.append(ss.str());
+		}
+		return result;
+	}
+	else if(temp.type == AssemblerDirectives)
+	{
+		tmpISS >> tmpSearch;
+		if(temp.mnemonic == "BYTE")
+		{
+			if(tmpSearch[0] == 'C')
+			{
+				tmpSearch = tmpSearch.substr(2);
+				tmpSearch = tmpSearch.substr(0,tmpSearch.find('\''));
+				for(int i=0;i<tmpSearch.size();i++) ss << hex << static_cast<unsigned>(tmpSearch[i]);
+				result.append(ss.str());
+				return result;
+			}
+			else
+			{
+				tmpSearch = tmpSearch.substr(2);
+				tmpSearch = tmpSearch.substr(0,tmpSearch.find('\''));
+				result.append(tmpSearch);
+				return result;
+			}
+		}
+		else if(temp.mnemonic == "WORD")
+		{
+			ss << hex << setw(6) << std::setfill('0') << tmpSearch;
+			result.append(ss.str());
+			return result;
+		}
+		else return "";
+	}
+	else return "";
+}
+
 int main()
 {
 	HashTable table;
@@ -436,8 +512,21 @@ int main()
 	}
 	outputFile << "SYMTAB:" << endl;
 	outputFile << symTable;
+
+	cout<<" 1: "<<endl;
+	sourceFile.clear();
+	sourceFile.seekg(0, std::ios::beg);
+	std::getline(sourceFile, buffer);
+	line_count = 2;
+	while( std::getline(sourceFile, buffer) )
+	{
+		cout << setw(2) << line_count << ": ";
+		cout << table.genMachineCode(buffer, symTable) << endl;
+		line_count++;
+	}
     
 	sourceFile.close();
 	outputFile.close();
+	system("pause");
 	return 0;
 }
