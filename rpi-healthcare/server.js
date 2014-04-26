@@ -18,7 +18,6 @@ var server = http.createServer(function (request, response) {
 		case '/client':
 			fs.readFile('./client.html', function (error, data) {
 				response.write(data);
-				//response.end();
 
 				if(request.method == 'POST') {
 					var formData = '';
